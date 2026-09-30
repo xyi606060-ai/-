@@ -58,26 +58,8 @@
 - `src/app/api/hong/scene/route.ts`、`/api/hong/options/route.ts`（动态话术）、`/api/hong/talk/route.ts`（SSE）。
 - `src/app/hong/page.tsx`：哄哄游戏页面（选女友/游戏台/结算）。
 
-## 产品 B：哄哄模拟器（独立产品，路由 `/hong`）
 
-- 定位：AI 扮演生气女友、玩家靠读心术把她哄好的纯娱乐小游戏（移动端优先）。
-- 玩法：情绪 10→2 赢，冲过 12 或机会用尽输；4 位女友可选（温柔玉女/软萌萝莉/高冷御姐/元气活力），话术面板选 1–3 句发出，多轮拉扯会翻旧账提难度。
-- 核心原则：**情绪数值由规则引擎硬编码（AI 不碰数值）**，AI 只生成台词/语气/表演。
-- 关联需求文档：`docs/HONG_REQUIREMENTS.md`。
 
-### 关键文件
-- `src/lib/emotion.ts`：情绪规则引擎（`computeDelta` 按 动作类型×场景期望 算增减；`PHRASES` 话术库）。
-- `src/lib/coquette.ts`：LLM 人设层（`GIRL_TYPES` 四性格、`generateScene` 生成场景+线索、`generateReply` 生成应景台词）。
-- `src/lib/safety.ts`：敏感内容关键词闸（涉黄/暴漏/引战/代聊）。
-- `src/lib/gfStorage.ts`：对局记录/女友偏好（localStorage）。
-- `src/app/api/hong/scene/route.ts`：POST 生成生气场景+开场台词+读心线索（JSON）。
-- `src/app/api/hong/talk/route.ts`：POST 接话，SSE 事件流 `text/expr/delta/done`（text=流式台词，expr=表情动作指令，delta=情绪增减+mood）。
-- `src/app/hong/page.tsx`：游戏界面（选女友/游戏台/结算三阶段，浏览器 Web Speech 语音）。
-
-### 运行时注意
-- `/api/hong/*` 均 `nodejs` runtime + `force-dynamic`；LLM 用 `coze-coding-dev-sdk` + `HeaderUtils.extractForwardHeaders`。
-- 规则引擎逻辑集中在 `emotion.ts`，改动分值先看 `docs/HONG_REQUIREMENTS.md` 的 6.4 表。
-- M1.5 将接 3D 形象（Three.js/R3F）、M2 接专业 TTS 真人音；当前语音为浏览器 Web Speech。
 
 ### 运行时注意事项
 - LLM 走 `coze-coding-dev-sdk`，必须 `HeaderUtils.extractForwardHeaders` 转发请求头。
@@ -111,6 +93,42 @@
    1. 三方 CSS、字体等资源可在 `globals.css` 中顶部通过 `@import` 引入或使用 next/font
    2. preload, preconnect, dns-prefetch 通过 ReactDOM 的 preload、preconnect、dns-prefetch 方法引入
    3. json-ld 可阅读 https://nextjs.org/docs/app/guides/json-ld
+
+## 代码质量铁律（每次写代码之前先过一遍）
+
+### 核心原则：高内聚、低耦合
+
+- **高内聚**：每个组件/模块/函数只做一件事。如果名字里出现"和""与""且"，就要拆分
+- **低耦合**：模块之间通过纯函数 / 接口交互，不共享内部状态，不互相感知实现细节
+- **先抽象再动手**：写代码前先想清楚——这个东西的边界在哪里？谁依赖谁？改它会影响谁？
+
+### 代码坏味道 Checklist（改完代码必须逐条打勾）
+
+**React / 表单**
+- [ ] 条件渲染的两套 Form 里没有同名字段（DOM 复用会导致事件拦截）。如果必须条件切换，要么用单个 Form + 动态 schema，要么给容器加 `key={mode}` 强制卸载重建
+- [ ] `async onSubmit` 里不依赖 `e.preventDefault()` 生效——必须用同步 wrapper（`const submit = (e) => { e.preventDefault(); void asyncFn(); }`），或 `<form noValidate>` + `form.handleSubmit`
+- [ ] Zod schema 不把"空"和"格式错"混成一条规则——先 `.min(1, '请输入')` 再 `.regex()` / `.email()`，别一把梭
+- [ ] 错误提示不依赖 shadcn `<FormMessage>` 的 `useFormState` 订阅（未 touched 字段可能不渲染），直接读 `form.formState.errors.xxx?.message`
+
+**组件设计**
+- [ ] 一个组件里没有两套独立的同名状态（如 loginForm + registerForm）
+- [ ] 纯展示组件和逻辑组件分离（展示组件不做 fetch / 不写 localStorage / 不调 API）
+- [ ] 常量 / schema / 类型定义放在组件外面，不内嵌在 JSX 里
+
+**数据层**
+- [ ] Supabase 表全开 RLS，策略限定 `auth.uid() = user_id`
+- [ ] 数据库结构变更走 migration，不让用户手动粘 SQL
+
+**工程纪律**
+- [ ] 改完一个变量/一个分支就跑热更新验证，别堆 3 个改动一起测
+- [ ] 类型检查通过才交付
+- [ ] 出错了写伤疤日志，包含：坏味道清单 + 根因链 + 防呆规则（不写流水账）
+
+### 不合格的交付 = 以下任意一条未做到
+
+1. 未过坏味道 Checklist 就提交
+2. 未跑类型检查 + 浏览器实测
+3. 出错了没写伤疤日志
 
 ## UI 设计与组件规范 (UI & Styling Standards)
 

@@ -2,8 +2,10 @@
 
 import { useEffect, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
-import { ShieldCheck, HeartHandshake, Sparkles } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { ShieldCheck, HeartHandshake, Sparkles, LogOut, CircleUserRound } from 'lucide-react';
 import { leftQuota, getGender, saveGender, type Gender } from '@/lib/storage';
+import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 
 const GENDER_OPTIONS: { value: Gender; label: string; emoji: string }[] = [
@@ -29,6 +31,16 @@ export function SettingsTab() {
     setGender(next);
     saveGender(next);
     toast.success('已保存');
+  };
+
+  const logout = async () => {
+    if (!supabase) return;
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+      toast.error('退出失败，请稍后再试');
+      return;
+    }
+    window.location.reload();
   };
 
   return (
@@ -85,6 +97,16 @@ export function SettingsTab() {
           <li>· 建议复制话术后先人工润色再发送，效果与分寸由你把握。</li>
         </ul>
       </div>
+
+      {supabase && (
+        <Button
+          variant="outline"
+          onClick={() => void logout()}
+          className="w-full gap-2 rounded-2xl text-muted-foreground"
+        >
+          <LogOut className="size-4" /> 退出登录
+        </Button>
+      )}
     </div>
   );
 }

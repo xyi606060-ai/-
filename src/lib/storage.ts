@@ -31,6 +31,33 @@ const GENDER_KEY = 'ally_gender_v1';
 const RETENTION_MS = 30 * 24 * 60 * 60 * 1000; // 30 天
 const FREE_LIMIT = 5;
 
+/* ---------- 变更监听（云端同步用） ---------- */
+export interface StorageListener {
+  onGender?: (g: { your: Gender; ta: Gender }) => void;
+  onContacts?: (list: Contact[]) => void;
+  onUsage?: (u: Usage) => void;
+}
+
+const listeners: StorageListener[] = [];
+
+export function addStorageListener(l: StorageListener): () => void {
+  listeners.push(l);
+  return () => {
+    const idx = listeners.indexOf(l);
+    if (idx >= 0) listeners.splice(idx, 1);
+  };
+}
+
+function notifyGender(g: { your: Gender; ta: Gender }): void {
+  for (const l of listeners) l.onGender?.(g);
+}
+function notifyContacts(list: Contact[]): void {
+  for (const l of listeners) l.onContacts?.(list);
+}
+function notifyUsage(u: Usage): void {
+  for (const l of listeners) l.onUsage?.(u);
+}
+
 function safeRead(key: string): string | null {
   if (typeof window === 'undefined') return null;
   try {
@@ -62,6 +89,7 @@ export function getGender(): { your: Gender; ta: Gender } {
 }
 export function saveGender(g: { your: Gender; ta: Gender }): void {
   safeWrite(GENDER_KEY, JSON.stringify(g));
+  notifyGender(g);
 }
 /** 是否已初始化过性别选择 */
 export function hasGender(): boolean {
@@ -89,6 +117,7 @@ export function getContact(id: string): Contact | undefined {
 
 function persistContacts(list: Contact[]): void {
   safeWrite(CONTACTS_KEY, JSON.stringify(list));
+  notifyContacts(list);
 }
 
 export function upsertContact(contact: Contact): void {
@@ -124,11 +153,25 @@ export function leftQuota(): { used: number; left: number; exhausted: boolean } 
 export function consumeUsage(): { left: number; exhausted: boolean } {
   const used = leftQuota().used;
   const count = used + 1;
-  safeWrite(USAGE_KEY, JSON.stringify({ count, resetAt: Date.now() + RETENTION_MS }));
+  const usage: Usage = { count, resetAt: Date.now() + RETENTION_MS };
+  safeWrite(USAGE_KEY, JSON.stringify(usage));
+  notifyUsage(usage);
   return {
     left: Math.max(0, FREE_LIMIT - count),
     exhausted: count >= FREE_LIMIT,
   };
+}
+
+/** 用云端数据覆盖本地（登录时恢复） */
+export function restoreContacts(list: Contact[]): void {
+  persistContacts(list);
+}
+export function restoreUsage(u: Usage): void {
+  safeWrite(USAGE_KEY, JSON.stringify(u));
+  notifyUsage(u);
+}
+export function restoreGender(g: { your: Gender; ta: Gender }): void {
+  saveGender(g);
 }
 
 export function genId(): string {
