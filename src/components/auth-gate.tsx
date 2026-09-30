@@ -24,6 +24,7 @@ import {
 import { BrandLogo } from '@/components/brand-logo';
 import { supabase } from '@/lib/supabase';
 import { startCloudSync } from '@/lib/cloud';
+import { isUsernameTaken, claimUsername } from '@/lib/profile';
 import { Toaster, toast } from 'sonner';
 
 const emailSchema = z
@@ -37,8 +38,14 @@ const loginSchema = z.object({
   confirm: z.string().optional(),
 });
 
+const usernameSchema = z
+  .string()
+  .min(1, '请输入用户名')
+  .max(20, '用户名最多 20 个字');
+
 const registerSchema = z
   .object({
+    username: usernameSchema,
     email: emailSchema,
     password: z.string().min(8, '密码至少 8 位，更安全').max(72, '密码太长了'),
     confirm: z.string().min(1, '请再输一次密码'),
@@ -48,7 +55,9 @@ const registerSchema = z
     path: ['confirm'],
   });
 
+// 登录与注册共用一份类型；register 才有 username / confirm 必填
 type AuthValues = {
+  username?: string;
   email: string;
   password: string;
   confirm?: string;
@@ -74,7 +83,7 @@ function AuthScreen({ onAuthed }: { onAuthed: () => void }) {
   // 单个 useForm，schema 根据 mode 切换
   const form = useForm<AuthValues>({
     resolver: zodResolver(mode === 'login' ? loginSchema : registerSchema),
-    defaultValues: { email: '', password: '', confirm: '' },
+    defaultValues: { username: '', email: '', password: '', confirm: '' },
     mode: 'onSubmit',
   });
 
@@ -91,12 +100,24 @@ function AuthScreen({ onAuthed }: { onAuthed: () => void }) {
         toast.success('欢迎回来');
         onAuthed();
       } else {
+        const username = values.username?.trim() ?? '';
+        // 1. 查重：用户名被占用就挡住，别等数据库报错
+        if (await isUsernameTaken(username)) {
+          toast.error('这个用户名已经有人用了，换一个吧');
+          return;
+        }
+        // 2. 注册
         const { data, error } = await supabase.auth.signUp({
           email: values.email.trim(),
           password: values.password,
+          options: {
+            data: { username },
+          },
         });
         if (error) throw new Error(error.message);
         if (data.session) {
+          // 3. 把用户名认领到 profiles（注册下唯一约束兜底）
+          await claimUsername(username);
           toast.success('注册成功，开始使用吧');
           onAuthed();
         } else {
@@ -148,6 +169,31 @@ function AuthScreen({ onAuthed }: { onAuthed: () => void }) {
 
           <Form {...form}>
             <form noValidate onSubmit={form.handleSubmit(onSubmit)} className="space-y-3">
+              {mode === 'register' && (
+                <FormField
+                  control={form.control}
+                  name="username"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-xs">用户名</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="text"
+                          autoComplete="nickname"
+                          placeholder="给自己起个昵称"
+                          className="rounded-xl bg-muted/40"
+                          {...field}
+                        />
+                      </FormControl>
+                      {form.formState.errors.username?.message && (
+                        <p className="text-xs text-destructive">
+                          {form.formState.errors.username.message as string}
+                        </p>
+                      )}
+                    </FormItem>
+                  )}
+                />
+              )}
               <FormField
                 control={form.control}
                 name="email"

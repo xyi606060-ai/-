@@ -3,9 +3,11 @@
 import { useEffect, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ShieldCheck, HeartHandshake, Sparkles, LogOut, CircleUserRound } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { ShieldCheck, HeartHandshake, Sparkles, LogOut, CircleUserRound, Pencil } from 'lucide-react';
 import { leftQuota, getGender, saveGender, type Gender } from '@/lib/storage';
 import { supabase } from '@/lib/supabase';
+import { getUsername, renameUsername, isUsernameTaken } from '@/lib/profile';
 import { toast } from 'sonner';
 
 const GENDER_OPTIONS: { value: Gender; label: string; emoji: string }[] = [
@@ -21,10 +23,69 @@ export function SettingsTab() {
     exhausted: false,
   });
   const [gender, setGender] = useState(getGender());
+  const [displayName, setDisplayName] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [newName, setNewName] = useState('');
 
   useEffect(() => {
     setQuota(leftQuota());
   }, []);
+
+  useEffect(() => {
+    if (!supabase) return;
+    let mounted = true;
+    void (async () => {
+      // 优先读 profiles 里的用户名（权威来源），拿不到再回退邮箱
+      const username = await getUsername();
+      if (!mounted) return;
+      if (username) {
+        setDisplayName(username);
+        return;
+      }
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!mounted) return;
+      const meta = user?.user_metadata as { username?: string } | undefined;
+      setDisplayName(meta?.username ?? user?.email ?? null);
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const startEdit = () => {
+    setNewName(displayName ?? '');
+    setEditing(true);
+  };
+
+  const submitRename = async () => {
+    const name = newName.trim();
+    if (!name) {
+      toast.error('用户名不能为空');
+      return;
+    }
+    if (name.length > 20) {
+      toast.error('用户名最多 20 个字');
+      return;
+    }
+    if (name === displayName) {
+      setEditing(false);
+      return;
+    }
+    if (await isUsernameTaken(name)) {
+      toast.error('这个用户名已经有人用了，换一个吧');
+      return;
+    }
+    const ok = await renameUsername(name);
+    if (ok) {
+      setDisplayName(name);
+      setEditing(false);
+      toast.success('用户名已更新');
+    } else {
+      toast.error('改名失败，稍后再试');
+    }
+  };
 
   const changeGender = (key: 'your' | 'ta', value: Gender) => {
     const next = { ...gender, [key]: value };
@@ -45,6 +106,58 @@ export function SettingsTab() {
 
   return (
     <div className="flex h-full flex-col gap-4 overflow-y-auto pb-4">
+      {displayName && (
+        <div className="rounded-2xl border bg-card p-4 shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+              <CircleUserRound className="size-6" />
+            </div>
+            {editing ? (
+              <div className="flex min-w-0 flex-1 items-center gap-2">
+                <Input
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  placeholder="输入新用户名"
+                  maxLength={20}
+                  className="h-9 rounded-lg bg-muted/40"
+                />
+                <Button
+                  size="sm"
+                  onClick={() => void submitRename()}
+                  className="h-9 shrink-0 rounded-lg"
+                >
+                  保存
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setEditing(false)}
+                  className="h-9 shrink-0 rounded-lg"
+                >
+                  取消
+                </Button>
+              </div>
+            ) : (
+              <>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold">{displayName}</p>
+                  <p className="text-xs text-muted-foreground">已登录 · 数据已同步到云端</p>
+                </div>
+                <Badge variant="secondary">已登录</Badge>
+                <button
+                  type="button"
+                  onClick={startEdit}
+                  aria-label="修改用户名"
+                  className="flex size-8 shrink-0 items-center justify-center rounded-full text-muted-foreground transition hover:bg-muted hover:text-foreground"
+                >
+                  <Pencil className="size-4" />
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="rounded-2xl border bg-card p-4 shadow-sm">
         <div className="mb-3 flex items-center gap-2">
           <Sparkles className="size-4 text-sun" />

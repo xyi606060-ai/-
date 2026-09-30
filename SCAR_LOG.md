@@ -79,3 +79,42 @@
 **教训**：
 - 操作外部 SPA 后台，先确认每个路由的稳定性，卡死立刻开新 tab，不值得在一个 tab 上耗几十秒
 - 浏览器自动化外，数据库结构的可靠验证方式是「行为验证」（注册一个测试账号 + 写数据），不只看 UI 上的 Success
+
+---
+
+## SCAR-004 2026-09-30 浏览器端到端测试不可用 → 用 curl 分层验证后端
+
+**问题**：
+1. 本地 dev 服务器中途挂了（后台 job 停止），浏览器 tab 导航到死掉的 `localhost:5000` 时 WebView 一直等响应 → 渲染进程 hang
+2. 一个 tab hang 后拖累整个浏览器，后续 `browser_tabs new` 出来的新 tab 也 navigate 超时
+3. `browser_fill` 对 Monaco 编辑器多行 SQL 只填了部分、逐行缩进错乱（不影响执行但很脏）
+
+**根因**：
+- 把「数据库/权限验证」和「UI 交互验证」混在一起，全部押宝在浏览器自动化上。后端一挂、WebView 一卡，整个测试链就断了。
+
+**解决方案（重点，验证也要分层）**：
+后端（DB / RLS / RPC）不依赖浏览器，直接用 `curl` 打 Supabase 的 PostgREST REST API：
+- 验证 RPC 可被 anon 调用：`curl -X POST .../rest/v1/rpc/username_taken` → 返回 `false`
+- 验证 RLS 拦截匿名写：`curl -X POST .../rest/v1/profiles` → HTTP 401
+- 验证 RLS 匿名读返回空：`curl .../rest/v1/profiles?select=...` → `[]`
+
+这样把「数据库层 + 权限层」和「UI 层」解耦：前者 curl 秒级验证，后者才是浏览器的活。
+
+**教训**：
+- 后端验证优先用 curl + PostgREST，比浏览器自动化快、稳一个数量级
+- 浏览器自动化只测 UI 层（表单渲染/交互/跳转），永远不拿它验数据库
+- Monaco 编辑器填多行 SQL 用 `monaco.editor.getEditors()[0].getModel().setValue(sql)`，别用 `browser_fill`
+
+---
+
+## SCAR-005 2026-09-30 服务器"不可用"反复复发 → 根因是 dev.sh 内置 1 小时定时回收
+
+**问题**：dev server 跑约 1 小时就自动挂掉，表现为「服务器不可用」。之前每次都临时重启了事，反复复发。
+
+**根因（这次彻底挖到，非偶发）**：`scripts/dev.sh` 里 `MAX_RUNTIME_SECONDS=3600` + `timeout_watchdog_enabled()` 是扣子云端为回收资源加的 watchdog。本地没设 `COZE_EVAL`/`COZE_PROJECT_TYPE` 环境变量，开关一直打开，到 1 小时就整组 kill，必然复发。
+
+**修复**：把 `timeout_watchdog_enabled()` 函数体改为 `return 1`，永久禁用定时回收，dev server 现在常驻不自动退出（原逻辑以注释保留，恢复云端回收时改回即可）。已重启验证：5000 端口可访问，返回 200。
+
+**防呆规则**：
+- 本项目的 dev.sh 是扣子迁移来的，自带「1 小时自动杀进程」的云端回收逻辑。以后再遇「服务器隔段时间就挂」，先查是不是这类定时回收，而不是无限次重启。
+- 伤疤日志的价值不是「记下来」，而是「改了根因让它不再复发」——本次补上的正是这一环。

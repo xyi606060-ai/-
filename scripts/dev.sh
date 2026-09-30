@@ -100,8 +100,12 @@ PID_FILE="${LOG_DIR}/server.pid"
 # detached 出去的进程没人负责回收，超过这个时长就自己退出，避免端口与内存长期泄露。
 MAX_RUNTIME_SECONDS=3600
 
+# 本地开发永久禁用「1 小时超时自动回收」。这是扣子云端为了回收资源加的 watchdog，
+# 会导致 dev server 每运行 1 小时就被整组 kill，表现为"服务器突然不可用"反复复发。
+# 恢复云端回收时，把函数体改回下面这行：
+#   [[ -z "${COZE_EVAL:-}" && -z "${COZE_PROJECT_TYPE:-}" ]]
 timeout_watchdog_enabled() {
-  [[ -z "${COZE_EVAL:-}" && -z "${COZE_PROJECT_TYPE:-}" ]]
+  return 1
 }
 
 # 真正被 detach 的是这层 bash wrapper：它是进程组 leader，组内 watchdog 到点回收整组
