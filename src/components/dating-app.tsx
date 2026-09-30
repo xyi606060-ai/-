@@ -15,7 +15,6 @@ import {
   ThumbsDown,
   Send,
   RotateCcw,
-  Menu,
   UserPlus,
   Settings,
   MessageSquarePlus,
@@ -79,7 +78,6 @@ export function DatingApp() {
   const [activeContact, setActiveContact] = useState<Contact | null>(null);
   const [createMode, setCreateMode] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const [drawerOpen, setDrawerOpen] = useState(false);
   const [contactsRefresh, setContactsRefresh] = useState(0);
 
   // 新建 TA 表单
@@ -111,16 +109,13 @@ export function DatingApp() {
     setText('');
   }, [activeContact?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const closeDrawer = () => setDrawerOpen(false);
   const openSettingsSheet = () => {
     setShowSettings(true);
-    closeDrawer();
   };
 
   const gotoCreate = () => {
     setCreateMode(true);
     setShowSettings(false);
-    closeDrawer();
   };
 
   const createContact = () => {
@@ -141,7 +136,6 @@ export function DatingApp() {
     setCreateMode(false);
     setNewName('');
     setContactsRefresh((n) => n + 1);
-    closeDrawer();
     toast.success(`已添加「${name}」，开始和 TA 聊吧`);
   };
 
@@ -149,7 +143,6 @@ export function DatingApp() {
     setActiveContact(c);
     setCreateMode(false);
     setShowSettings(false);
-    closeDrawer();
   };
 
   const onFiles = useCallback(async (files: FileList | null) => {
@@ -314,7 +307,7 @@ export function DatingApp() {
   return (
     <div
       data-atao-gender={themeGender}
-      className="relative mx-auto flex h-dvh w-full max-w-md flex-col bg-background md:border-x md:shadow-2xl"
+      className="flex h-dvh w-full bg-background"
     >
       {inWelcome ? (
         <Welcome
@@ -325,14 +318,58 @@ export function DatingApp() {
           }}
         />
       ) : (
-        <>
-          {/* 顶栏 */}
-          <header className="flex items-center gap-2 border-b bg-background/90 px-4 py-3 backdrop-blur">
-            <Button variant="ghost" size="icon" className="size-9" onClick={() => setDrawerOpen(true)} title="历史与新建">
-              <Menu className="size-5" />
-            </Button>
-            <BrandLogo size="sm" />
-            <div className="ml-auto flex items-center gap-2">
+        <div className="flex w-full">
+          {/* 左侧常驻侧边栏 */}
+          <aside className="flex w-72 shrink-0 flex-col border-r bg-sidebar">
+            <div className="flex items-center gap-2 border-b px-4 py-3.5">
+              <BrandLogo size="sm" />
+            </div>
+            <div className="ally-scroll flex-1 overflow-y-auto p-3">
+              <Button className="mb-3 w-full gap-2 rounded-2xl" onClick={gotoCreate}>
+                <MessageSquarePlus className="size-4" /> 新建对话
+              </Button>
+              <div className="mb-1.5 px-1 text-xs font-medium text-muted-foreground">历史对象</div>
+              {savedContacts.length === 0 ? (
+                <p className="px-1 py-2 text-xs text-muted-foreground">还没有对话，点「新建对话」开始吧</p>
+              ) : (
+                <div className="space-y-1">
+                  {savedContacts.map((c) => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => pickExisting(c)}
+                      className={`flex w-full items-center gap-2.5 rounded-2xl border px-3 py-2.5 text-left transition hover:bg-accent/50 ${
+                        activeContact?.id === c.id ? 'border-primary/40 bg-accent' : 'border-transparent'
+                      }`}
+                    >
+                      <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary/12 text-sm text-primary">
+                        {c.name.slice(0, 1)}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-medium">{c.name}</span>
+                        <span className="block text-[11px] text-muted-foreground">
+                          {STAGE_EMOJI[c.stage]} {c.stage}
+                        </span>
+                      </span>
+                      <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">
+                        {c.messages.length > 0 || c.records.length > 0 ? '继续聊' : ''}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="border-t p-3">
+              <Button variant="ghost" className="w-full justify-start gap-2 rounded-xl text-sm" onClick={openSettingsSheet}>
+                <Settings className="size-4" /> 我的设置
+              </Button>
+            </div>
+          </aside>
+
+          {/* 右侧主区 */}
+          <div className="flex flex-1 flex-col">
+            {/* 顶栏 */}
+            <header className="flex items-center justify-end gap-2 border-b bg-background/90 px-6 py-3 backdrop-blur">
               <Badge variant="secondary" className="gap-1 py-1 text-[11px]">
                 <Sparkles className="size-3 text-sun" />
                 {remaining > 0 ? `剩 ${remaining} 次` : '已用完'}
@@ -340,11 +377,10 @@ export function DatingApp() {
               <Button variant="ghost" size="icon" className="size-9" onClick={openSettingsSheet} title="我的">
                 <Settings className="size-5" />
               </Button>
-            </div>
-          </header>
+            </header>
 
-          {/* 主内容 */}
-          <main className="ally-scroll flex-1 overflow-y-auto px-4 py-4">
+            {/* 主内容 */}
+            <main className="ally-scroll mx-auto w-full max-w-3xl flex-1 overflow-y-auto px-6 py-6">
             {showSettings ? (
               <SettingsTab />
             ) : createMode || !activeContact ? (
@@ -637,67 +673,10 @@ export function DatingApp() {
               </div>
             )}
           </main>
-
-          {/* 左侧抽屉：新建 + 历史人物 */}
-          {drawerOpen && (
-            <div className="absolute inset-0 z-40 flex">
-              <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={closeDrawer} />
-              <div className="relative z-10 flex h-full w-80 max-w-[85%] flex-col border-r bg-background shadow-2xl">
-                <div className="flex items-center justify-between border-b px-4 py-3.5">
-                  <div className="flex items-center gap-2">
-                    <BrandLogo size="sm" />
-                    <span className="text-sm font-semibold">接话搭子</span>
-                  </div>
-                  <Button variant="ghost" size="icon" className="size-8" onClick={closeDrawer}>
-                    <X className="size-4" />
-                  </Button>
-                </div>
-                <div className="ally-scroll flex-1 overflow-y-auto p-3">
-                  <Button className="mb-3 w-full gap-2 rounded-2xl" onClick={gotoCreate}>
-                    <MessageSquarePlus className="size-4" /> 新建对话
-                  </Button>
-                  <div className="mb-1.5 px-1 text-xs font-medium text-muted-foreground">历史对象</div>
-                  {savedContacts.length === 0 ? (
-                    <p className="px-1 py-2 text-xs text-muted-foreground">还没有对话，点「新建对话」开始吧</p>
-                  ) : (
-                    <div className="space-y-1">
-                      {savedContacts.map((c) => (
-                        <button
-                          key={c.id}
-                          type="button"
-                          onClick={() => pickExisting(c)}
-                          className={`flex w-full items-center gap-2.5 rounded-2xl border px-3 py-2.5 text-left transition hover:bg-accent/50 ${
-                            activeContact?.id === c.id ? 'border-primary/40 bg-accent' : 'border-transparent'
-                          }`}
-                        >
-                          <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary/12 text-sm text-primary">
-                            {c.name.slice(0, 1)}
-                          </span>
-                          <span className="min-w-0 flex-1">
-                            <span className="block truncate text-sm font-medium">{c.name}</span>
-                            <span className="block text-[11px] text-muted-foreground">
-                              {STAGE_EMOJI[c.stage]} {c.stage}
-                            </span>
-                          </span>
-                          <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">
-                            {c.messages.length > 0 || c.records.length > 0 ? '继续聊' : ''}
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                <div className="border-t p-3">
-                  <Button variant="ghost" className="w-full justify-start gap-2 rounded-xl text-sm" onClick={openSettingsSheet}>
-                    <Settings className="size-4" /> 我的设置
-                  </Button>
-                </div>
-              </div>
-            </div>
-          )}
+          </div>
 
           <Toaster position="top-center" />
-        </>
+        </div>
       )}
     </div>
   );

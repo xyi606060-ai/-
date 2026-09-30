@@ -139,7 +139,7 @@ function AuthScreen({ onAuthed }: { onAuthed: () => void }) {
   };
 
   return (
-    <div className="ally-fadein flex h-full flex-col">
+    <div className="ally-fadein mx-auto flex h-full w-full max-w-md flex-col">
       <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
         <BrandLogo size="lg" />
         <p className="mt-3 text-sm leading-relaxed text-muted-foreground">

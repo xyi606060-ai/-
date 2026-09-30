@@ -61,7 +61,7 @@ export function Welcome({ onContinue }: WelcomeProps) {
   };
 
   return (
-    <div className="ally-fadein flex h-full flex-col">
+    <div className="ally-fadein mx-auto flex h-full w-full max-w-md flex-col">
       <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
         <LogoMarkFloat />
         <h1 className="mt-5 text-2xl font-bold tracking-tight text-foreground">接话搭子</h1>
