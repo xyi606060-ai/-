@@ -118,3 +118,43 @@
 **防呆规则**：
 - 本项目的 dev.sh 是扣子迁移来的，自带「1 小时自动杀进程」的云端回收逻辑。以后再遇「服务器隔段时间就挂」，先查是不是这类定时回收，而不是无限次重启。
 - 伤疤日志的价值不是「记下来」，而是「改了根因让它不再复发」——本次补上的正是这一环。
+
+---
+
+## SCAR-006 2026-09-30 博客功能：富文本编辑器 + 作者名实时跟随 + 浏览器 UI 验证分层
+
+**问题与解决**：
+1. **Tiptap v3 富文本在 Next.js SSR 下会报错**：`@tiptap/react` 依赖浏览器 DOM，服务端渲染必然失败。解决：`next/dynamic` + `ssr:false` 动态加载；且组件是**具名导出**，必须写 `dynamic(() => import('@/components/rich-editor').then(m => m.RichEditor))`，直接传模块会报「不能赋给 Loader」类型错误。
+2. **Tailwind preflight 会重置富文本排版**：`<h1>` 字号、`<ul>/<ol>` 圆点、`<blockquote>` 边框全被清掉。解决：在 globals.css 手写 `.rich-content` 的一套排版样式（编辑器内与详情页共用），不额外装 @tailwindcss/typography。
+3. **作者名「实时跟随用户名」的坑**：blog_posts 若只存 user_id，展示时 join profiles 查当前 username 会被 profiles 的 RLS「仅本人可读」挡住，公开读博客时取不到作者名。解决：给 profiles 加一条公开读策略（username 本就是公开昵称）；blog_posts 不冗余存作者名，前端 `listPosts/getPost` 按 user_id 批量查 profiles 拼出 author。
+4. **工具栏按钮点一下编辑器失焦、选区丢失**：给工具栏 button 加 `onMouseDown={(e) => e.preventDefault()}`，保持输入焦点不丢。
+5. **浏览器对 localhost:5000 的 navigate/activate/wait 持续 60s 超时**（snapshot 却正常，viewport 还是 0x0）。这是 SCAR-003/004 的同类老问题。本次用 `browser_use` 子代理（独立浏览器实例）绕开卡死，成功验证到列表页 UI；「登录后写文章→详情」这类需要登录态的交互，受环境限制无法完整实测。
+
+**防呆规则**：
+- 富文本编辑器一律 `next/dynamic(..., { ssr:false })` + 具名导出的 `.then(m => m.XXX)`，别写 `import()` 直接传。
+- 富文本正文样式集中在 `.rich-content` 一处，别在编辑器、详情页各写一套重复样式。
+- 展示「作者名」这种 join 出来的字段，先确认被 join 的表 RLS 是否挡得住公开读；挡得住就补公开读策略。
+- 浏览器自动化对 localhost 导航卡死时，优先换 `browser_use` 子代理验证 UI，别在一个卡死 tab 上反复 navigate 硬等。
+
+---
+
+## SCAR-007 2026-10-01 改名撞了已占用名字，却只报一句笼统「改名失败」
+
+**现象**：用户把账号「金美缮1」改名成「金缮」，结果：
+1. 没提示「金缮已经被人注册了」（其实另一个账号就叫「金缮」）；
+2. 用户以为改名成功了，但「金美缮1」写的旧文章作者名没变，误以为系统「认错身份证号/user_id」。
+
+**根因链**：
+1. `renameUsername()` 只返回 `boolean`，把「为什么失败」的信息丢了。
+2. 数据库的 `username` 有唯一约束，把「金美缮1 → 金缮」这一改给拒了（Postgres 23505 唯一冲突）。但代码里 `return !error` 把它塌缩成一句话「改名失败，稍后再试」——用户既不知道是被占用，也不确定到底改没改成。
+3. 旧文章作者名是「实时 join profiles 查当前 username」的，改名根本没落库（accounts 还是「金美缮1」），所以旧文章显示旧名字是**正确行为**，不是 bug —— 是改名压根没成功造成的错觉。
+4. `username_taken` RPC 实测正常（已占用返回 true、空闲返回 false），但 `isUsernameTaken` 的 `if (error) return false` 是「查重失败就放行」，一旦 RPC 偶发报错会静默放行，进一步放大「没提示被占用」的观感。
+
+**修复**：
+1. `renameUsername` 返回可区分的 `RenameResult`：`{ ok: true }` / `{ ok: false, reason: 'taken' | 'error' }`，用 `error.code === '23505'`（或 message 里含 duplicate/already exists）识别「被占用」。
+2. settings-tab 里 `reason === 'taken'` 时明确提示「这个名字刚刚被别人注册了，换一个吧」，其余才兜底「稍后再试」。
+
+**防呆规则**：
+- 数据库唯一约束是最后兜底，前端必须把「唯一冲突(23505)」翻译成用户能听懂的话，别塌缩成一句笼统失败。
+- 改名/注册这类「断言名字可用」的操作，失败时要区分「被占用」和「其它错误」，不能同一句话糊过去。
+- 排查「显示旧数据」类问题，先确认底层的写入到底成功没有（直接查表，`updated_at`/实际值有没有变），别在 UI 表象上猜。

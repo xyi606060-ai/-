@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
@@ -18,6 +19,7 @@ import {
   UserPlus,
   Settings,
   MessageSquarePlus,
+  NotebookPen,
 } from 'lucide-react';
 import { readAndCompress } from '@/lib/image';
 import { copyText } from '@/lib/clipboard';
@@ -359,7 +361,12 @@ export function DatingApp() {
                 </div>
               )}
             </div>
-            <div className="border-t p-3">
+            <div className="space-y-1 border-t p-3">
+              <Button asChild variant="ghost" className="w-full justify-start gap-2 rounded-xl text-sm">
+                <Link href="/blog">
+                  <NotebookPen className="size-4" /> 恋爱笔记
+                </Link>
+              </Button>
               <Button variant="ghost" className="w-full justify-start gap-2 rounded-xl text-sm" onClick={openSettingsSheet}>
                 <Settings className="size-4" /> 我的设置
               </Button>

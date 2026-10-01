@@ -51,16 +51,24 @@ export async function getUsername(): Promise<string | null> {
   return (data as { username: string }).username;
 }
 
-/** 修改用户名（RLS 允许本人 update；唯一约束在数据库兜底） */
-export async function renameUsername(username: string): Promise<boolean> {
-  if (!supabase) return false;
+export type RenameResult = { ok: true } | { ok: false; reason: 'taken' | 'error' };
+
+/** 修改用户名（RLS 允许本人 update；唯一约束在数据库兜底）。
+ * 返回可区分「名字被占用」和「其它失败」，让 UI 能给出准确提示，而不是一句笼统的「失败」。 */
+export async function renameUsername(username: string): Promise<RenameResult> {
+  if (!supabase) return { ok: false, reason: 'error' };
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return false;
+  if (!user) return { ok: false, reason: 'error' };
   const { error } = await supabase
     .from('profiles')
     .update({ username })
     .eq('user_id', user.id);
-  return !error;
+  if (!error) return { ok: true };
+  // Postgres 唯一约束冲突 code = 23505；message 里也可能带 duplicate / already exists
+  const taken =
+    error.code === '23505' ||
+    /duplicate|already exists|unique/i.test(error.message ?? '');
+  return { ok: false, reason: taken ? 'taken' : 'error' };
 }

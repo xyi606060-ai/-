@@ -77,11 +77,13 @@ export function SettingsTab() {
       toast.error('这个用户名已经有人用了，换一个吧');
       return;
     }
-    const ok = await renameUsername(name);
-    if (ok) {
+    const result = await renameUsername(name);
+    if (result.ok) {
       setDisplayName(name);
       setEditing(false);
       toast.success('用户名已更新');
+    } else if (result.reason === 'taken') {
+      toast.error('这个名字刚刚被别人注册了，换一个吧');
     } else {
       toast.error('改名失败，稍后再试');
     }
